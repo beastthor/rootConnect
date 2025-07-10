@@ -4,7 +4,9 @@ import com.rootconnect.rootconnect.dto.UserMatchedResponse;
 import com.rootconnect.rootconnect.dto.UserProfileUpdateRequest;
 import com.rootconnect.rootconnect.model.Interest;
 import com.rootconnect.rootconnect.model.User;
+import com.rootconnect.rootconnect.model.UserInteraction;
 import com.rootconnect.rootconnect.repository.InterestRepository;
+import com.rootconnect.rootconnect.repository.UserInteractionRepository;
 import com.rootconnect.rootconnect.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +25,7 @@ public class UserController {
 
     private final UserRepository userRepo;
     private final InterestRepository interestRepo;
+    private final UserInteractionRepository interactionRepo;
 
     @GetMapping("/me")
     public ResponseEntity<User> getProfile(Authentication authentication) {
@@ -150,5 +153,37 @@ public class UserController {
                 .sorted()
                 .toList();
         return ok(interests);
+    }
+
+    @PostMapping("/{targetUserId}/like")
+    public ResponseEntity<?> likeUser(@PathVariable Long targetUserId, Authentication authentication){
+        return handleInteraction(targetUserId, authentication, UserInteraction.InteractionType.LIKE);
+    }
+
+    @PostMapping("/{targetUserId}/pass")
+    public ResponseEntity<?> passUser(@PathVariable Long targetUserId, Authentication authentication) {
+        return handleInteraction(targetUserId, authentication, UserInteraction.InteractionType.PASS);
+    }
+
+    private ResponseEntity<?> handleInteraction(Long targetUserId, Authentication authentication, UserInteraction.InteractionType type) {
+        User sourceUser = userRepo.findByEmail(authentication.getName())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        User targetUser = userRepo.findById(targetUserId)
+                .orElseThrow(() -> new RuntimeException("Target user not found"));
+
+        if (interactionRepo.existsBySourceUserAndTargetUser(sourceUser, targetUser)) {
+            return ResponseEntity.badRequest().body("Already interacted with this user.");
+        }
+
+        UserInteraction interaction = UserInteraction.builder()
+                .sourceUser(sourceUser)
+                .targetUser(targetUser)
+                .type(type)
+                .build();
+
+        interactionRepo.save(interaction);
+
+        return ResponseEntity.ok(type + " recorded.");
     }
 }
